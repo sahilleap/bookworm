@@ -8,20 +8,27 @@ export default function Home() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<number>(1);
+  const [hasMore, setHasMore] = useState<boolean>(true);
 
   const fetchBooks = useCallback(
     async (_search: string, _page: number) => {
       try {
         const response = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(_search)}&page=${_page}`);
           const data = await response.json();
-          setBooks(data.docs);
+          if (_page === 1) {
+            setBooks(data.docs);
+            setHasMore(data.docs.length < data.numFound);
+          } else {
+            setBooks((prevValue: any[]) => [...prevValue, ...data.docs]);
+            setHasMore(data.docs.length < data.numFound);
+          }
         } catch (error) {
           setError("Failed to fetch books. Please try again.");
           setLoading(false);
           setBooks([]);
         }
     },
-    [],
+    [books],
   )
 
   const handleSearch = async () => {
@@ -49,16 +56,29 @@ export default function Home() {
     return () => clearTimeout(debounceTimer);
   }, [search]);
 
-  const handleScroll = useCallback(async (e: any) => {
-    console.log("handleScroll")
-    const { scrollTop, scrollHeight, clientHeight } = e.target ;
-    if (scrollHeight - scrollTop <= clientHeight * 1.5) {
-      await fetchBooks(debouncedSearch, page + 1);
-    }
-  }, []);
+  const handleScroll = useCallback(
+    async (data: React.UIEvent<HTMLDivElement>) => {
+      console.log(
+        "scroll",
+        data.currentTarget.scrollTop + data.currentTarget.clientHeight,
+        data.currentTarget.scrollHeight - 100
+      );
+      if (
+        (
+          data.currentTarget.scrollTop + data.currentTarget.clientHeight >=
+          data.currentTarget.scrollHeight - 100
+        ) && 
+        hasMore
+      ) {
+        await fetchBooks(debouncedSearch, page +1);
+        setPage(page + 1);
+      }
+    },
+    [debouncedSearch, page, hasMore]
+  );
 
   return (
-    <div className="flex flex-col min-h-screen p-10 bg-zinc-50 font-sans dark:bg-black overflow-y-auto" onScroll={handleScroll} style={{ scrollBehavior: 'smooth' }}>
+    <div className="flex flex-col h-screen p-10 bg-zinc-50 font-sans dark:bg-black overflow-y-auto">
       <div className="flex flex-row gap-2 mb-4">
         <input 
           type="text"
@@ -69,7 +89,7 @@ export default function Home() {
         />
       </div>
       {debouncedSearch.length > 0 && (
-        <div className="flex flex-col gap-2 overflow-y-auto h-full" >
+        <div className="flex flex-col gap-2 overflow-y-auto h-full" onScrollEndCapture={handleScroll}>
           {loading && <div className="flex justify-center items-center h-full">Loading...</div>}
           {error && <div className="flex justify-center items-center h-full">{error}</div>}
           {!error && (
